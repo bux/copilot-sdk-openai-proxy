@@ -816,17 +816,17 @@ async def dashboard_summary(request: Request):
             quota_payload = {"snapshots": {}, "error": str(exc)}
 
         sessions = await copilot_client.list_sessions()
-        sorted_sessions = sorted(sessions, key=lambda s: s.modifiedTime, reverse=True)
+        sorted_sessions = sorted(sessions, key=lambda s: s.modified_time, reverse=True)
         sessions_payload = [
             {
-                "session_id": s.sessionId,
-                "start_time": s.startTime,
-                "modified_time": s.modifiedTime,
-                "is_remote": s.isRemote,
+            "session_id": s.session_id,
+            "start_time": s.start_time,
+            "modified_time": s.modified_time,
+            "is_remote": s.is_remote,
                 "summary": s.summary,
                 "context": {
                     "cwd": s.context.cwd,
-                    "git_root": s.context.gitRoot,
+                    "git_root": s.context.git_root,
                     "repository": s.context.repository,
                     "branch": s.context.branch,
                 }
@@ -895,17 +895,17 @@ async def dashboard_prune_sessions(request: Request):
     try:
         copilot_client = await get_client(token)
         sessions = await copilot_client.list_sessions()
-        sorted_sessions = sorted(sessions, key=lambda s: s.modifiedTime, reverse=True)
+        sorted_sessions = sorted(sessions, key=lambda s: s.modified_time, reverse=True)
         to_delete = sorted_sessions[keep_int:]
 
         deleted: list[str] = []
         failed: list[dict[str, str]] = []
         for session in to_delete:
-            try:
-                await copilot_client.delete_session(session.sessionId)
-                deleted.append(session.sessionId)
-            except Exception as exc:
-                failed.append({"session_id": session.sessionId, "error": str(exc)})
+          try:
+            await copilot_client.delete_session(session.session_id)
+            deleted.append(session.session_id)
+          except Exception as exc:
+            failed.append({"session_id": session.session_id, "error": str(exc)})
 
         return JSONResponse(
             {

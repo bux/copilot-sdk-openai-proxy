@@ -11,7 +11,13 @@ from typing import Any, AsyncIterator
 
 from copilot import CopilotClient
 from copilot.session import PermissionHandler
-from copilot.generated.session_events import SessionEvent, SessionEventType
+from copilot.session_events import (
+    AssistantMessageData,
+    AssistantMessageDeltaData,
+    SessionErrorData,
+    SessionEvent,
+    SessionIdleData,
+)
 
 from .converters import (
     build_prompt,
@@ -108,11 +114,12 @@ async def handle_chat_completion(
         def on_event(event: SessionEvent) -> None:
             nonlocal error_msg
             try:
-                if event.type == SessionEventType.ASSISTANT_MESSAGE:
-                    if event.data.content:
-                        content_parts.append(event.data.content)
-                    if event.data.tool_requests:
-                        for tr in event.data.tool_requests:
+                data = event.data
+                if isinstance(data, AssistantMessageData):
+                    if data.content:
+                        content_parts.append(data.content)
+                    if data.tool_requests:
+                        for tr in data.tool_requests:
                             args_str = json.dumps(tr.arguments) if tr.arguments else "{}"
                             tool_calls_out.append(
                                 ToolCall(
@@ -124,10 +131,10 @@ async def handle_chat_completion(
                                     ),
                                 )
                             )
-                elif event.type == SessionEventType.SESSION_IDLE:
+                elif isinstance(data, SessionIdleData):
                     done.set()
-                elif event.type == SessionEventType.SESSION_ERROR:
-                    error_msg = getattr(event.data, "message", None) or str(event.data)
+                elif isinstance(data, SessionErrorData):
+                    error_msg = data.message
                     done.set()
             except Exception:
                 logger.exception("Error in event handler")
@@ -259,8 +266,9 @@ async def handle_chat_completion_stream(
         def on_event(event: SessionEvent) -> None:
             nonlocal tool_call_seen
             try:
-                if event.type == SessionEventType.ASSISTANT_MESSAGE_DELTA:
-                    delta = getattr(event.data, "delta_content", None)
+                data = event.data
+                if isinstance(data, AssistantMessageDeltaData):
+                    delta = data.delta_content
                     if not delta:
                         return
                     if has_tools:
@@ -271,10 +279,10 @@ async def handle_chat_completion_stream(
                     else:
                         queue.put_nowait({"type": "delta", "content": delta})
 
-                elif event.type == SessionEventType.ASSISTANT_MESSAGE:
-                    if event.data.tool_requests:
+                elif isinstance(data, AssistantMessageData):
+                    if data.tool_requests:
                         tool_call_seen = True
-                        for i, tr in enumerate(event.data.tool_requests):
+                        for i, tr in enumerate(data.tool_requests):
                             args_str = (
                                 json.dumps(tr.arguments)
                                 if tr.arguments
@@ -292,14 +300,14 @@ async def handle_chat_completion_stream(
                                 )
                             )
 
-                elif event.type == SessionEventType.SESSION_IDLE:
+                elif isinstance(data, SessionIdleData):
                     if has_tools:
                         done_event.set()
                     else:
                         queue.put_nowait(None)  # sentinel
 
-                elif event.type == SessionEventType.SESSION_ERROR:
-                    msg = getattr(event.data, "message", None) or str(event.data)
+                elif isinstance(data, SessionErrorData):
+                    msg = data.message
                     logger.error("Session error: %s", msg)
                     if has_tools:
                         done_event.set()

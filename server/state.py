@@ -7,7 +7,7 @@ import logging
 import os
 from datetime import datetime, timezone
 
-from copilot import CopilotClient, SubprocessConfig
+from copilot import CopilotClient
 from fastapi import Request
 
 logger = logging.getLogger("copilot_proxy")
@@ -24,8 +24,10 @@ _clients_lock = asyncio.Lock()
 _last_prune_at: dict[str | None, float] = {}
 
 
-def _parse_iso8601(value: str) -> datetime:
+def _parse_iso8601(value: datetime | str) -> datetime:
     """Parse an ISO-8601 timestamp, supporting trailing 'Z'."""
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
     try:
         normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
         parsed = datetime.fromisoformat(normalized)
@@ -49,7 +51,7 @@ async def _prune_old_sessions(client: CopilotClient) -> None:
 
     ordered = sorted(
         sessions,
-        key=lambda s: _parse_iso8601(s.modifiedTime),
+        key=lambda s: _parse_iso8601(s.modified_time),
         reverse=True,
     )
     stale_sessions = ordered[SESSION_KEEP_COUNT:]
@@ -57,11 +59,11 @@ async def _prune_old_sessions(client: CopilotClient) -> None:
     deleted = 0
     for session in stale_sessions:
         try:
-            await client.delete_session(session.sessionId)
+            await client.delete_session(session.session_id)
             deleted += 1
         except Exception:
             logger.exception(
-                "Failed deleting stale Copilot session %s", session.sessionId
+                "Failed deleting stale Copilot session %s", session.session_id
             )
 
     logger.info(
@@ -90,8 +92,7 @@ async def get_client(token: str | None) -> CopilotClient:
     """Return a running CopilotClient for *token*, creating one on first use."""
     async with _clients_lock:
         if token not in _clients:
-            cfg = SubprocessConfig(github_token=token)
-            client = CopilotClient(cfg)
+            client = CopilotClient(github_token=token)
             await client.start()
             _clients[token] = client
             logger.info(
