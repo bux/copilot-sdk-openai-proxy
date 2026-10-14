@@ -22,7 +22,7 @@ It exposes the classic OpenAI endpoints so you can use standard OpenAI clients (
 ## Requirements
 
 - Python 3.11+
-- GitHub Copilot CLI available/authenticated on host, or a valid GitHub token with Copilot access
+- A valid GitHub token with Copilot access
 
 ## Project Layout
 
@@ -122,6 +122,38 @@ curl http://localhost:8081/v1/chat/completions \
   }'
 ```
 
+## Model Discovery And Selection
+
+`GET /v1/models` returns the model IDs currently advertised for the supplied
+GitHub token. Select one of those exact IDs in Mealie or another OpenAI client;
+do not configure a guessed model name such as `gpt-6-luna` unless it appears in
+that response for the token being used.
+
+The proxy forwards the requested `model` value unchanged to the Copilot SDK.
+It does not use model discovery before creating a chat session, so chat
+completions continue to work if a model-list request fails. The Copilot backend
+decides whether the requested ID is available to that token and reports a
+session error for unsupported IDs.
+
+The proxy pins `github-copilot-sdk==1.0.21`. It passes each bearer token directly
+to `CopilotClient(github_token=...)` and uses the SDK's public typed session
+events. The SDK represents model billing with an optional multiplier; billing is
+not exposed by this proxy.
+
+## Offline Regression Tests
+
+After installing the project dependencies, run the offline tests without a
+GitHub token:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+The existing `test_proxy.py` is a credentialed end-to-end smoke script, not an
+offline test suite. To run it locally with an existing authenticated account,
+start the proxy and set `GITHUB_TOKEN` in your shell; do not commit or print the
+token.
+
 ## OpenAI SDK End-to-End Test
 
 Run server:
@@ -149,6 +181,9 @@ docker-compose up -d
 
 or standalone Docker
 
+The image pre-downloads the SDK-managed Copilot runtime during the build, so it
+does not install Node.js or the standalone Copilot CLI.
+
 Build:
 
 ```bash
@@ -168,6 +203,25 @@ Then open:
 - Home UI: `http://localhost:8081/`
 - Auth UI: `http://localhost:8081/auth`
 - Dashboard UI: `http://localhost:8081/auth/dashboard`
+
+### Later Deployment (Do Not Run On The Proxy Host Until Ready)
+
+From the checked-out deployment directory, build and replace only this service:
+
+```bash
+docker compose build copilot-sdk-openai-proxy
+docker compose up -d --force-recreate copilot-sdk-openai-proxy
+docker compose ps copilot-sdk-openai-proxy
+docker compose logs --tail=100 copilot-sdk-openai-proxy
+```
+
+Verify the deployed service through its normal network path with a valid token:
+
+```bash
+curl -fsS http://localhost:8081/health
+curl -fsS http://localhost:8081/v1/models \
+  -H "Authorization: Bearer $GITHUB_TOKEN"
+```
 
 ## Notes
 
